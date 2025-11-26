@@ -1,0 +1,35 @@
+aws_region                = "us-east-1"
+client_code               = "client1"
+environment               = "prod"
+
+private_assets_bucket_name = "client1-private-fastapi"
+frontend_bucket_name       = "client1-react-frontend"
+frontend_domain            = "" # optional
+acm_certificate_arn        = "" # required only when frontend_domain is set
+
+alb_allowed_cidrs = ["0.0.0.0/0"]
+
+db_username = "postgres"
+db_password = "REPLACE_ME"
+db_name     = "apollo"
+
+backend_secret_key    = "use-a-strong-random-string"
+backend_session_secret = "another-random-string"
+
+backend_image_tag = "client1-prod"
+
+lambda_image_tags = {
+  "utility-function-v2" = "client1-prod"
+  "forecast-model-v2"   = "client1-prod"
+  "quote-compare-v2"    = "client1-prod"
+  "correlation-v2"      = "client1-prod"
+  "read-mail-inbox-v2"  = "client1-prod"
+  "private_db_query"    = "client1-prod"
+}
+
+serper_api_key = "OPTIONAL_SERPER_KEY"
+
+tags = {
+  Owner = "SupplyChain"
+}
+
