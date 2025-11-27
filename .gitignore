@@ -2,11 +2,13 @@
 *.tfstate
 *.tfstate.*
 
+# Terraform local directory
+.terraform/
+
 # Scripts directory (untracked)
 scripts/
 
 # Local environment files
-.terraform/
 *.tfvars.json
 .env
 .env.local
