@@ -279,7 +279,8 @@ resource "aws_security_group" "vpc_endpoints" {
 # -----------------------------------------------------------------------------
 
 resource "aws_s3_bucket" "private_assets" {
-  bucket = var.private_assets_bucket_name
+  bucket        = var.private_assets_bucket_name
+  force_destroy = true
 
   tags = merge(local.tags, { Name = "${local.name_prefix}-private-assets" })
 }
@@ -312,7 +313,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "private_assets" {
 }
 
 resource "aws_s3_bucket" "frontend" {
-  bucket = var.frontend_bucket_name
+  bucket        = var.frontend_bucket_name
+  force_destroy = true
 
   tags = merge(local.tags, { Name = "${local.name_prefix}-frontend" })
 }
@@ -449,6 +451,7 @@ resource "aws_vpc_endpoint" "s3" {
 resource "aws_ecr_repository" "backend" {
   name                 = "${var.client_code}-apollo-backend"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
@@ -466,6 +469,7 @@ resource "aws_ecr_repository" "lambda" {
 
   name                 = "${each.value}-repo"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
