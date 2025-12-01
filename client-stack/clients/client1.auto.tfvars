@@ -23,6 +23,7 @@ lambda_image_tags = {
   "correlation-v2"      = "client1-prod"
   "read-mail-inbox-v2"  = "client1-prod"
   "private_db_query"    = "client1-prod"
+  "etl"                 = "client1-prod"
 }
 
 serper_api_key = ""

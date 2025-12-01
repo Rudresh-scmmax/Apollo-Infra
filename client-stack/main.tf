@@ -41,7 +41,8 @@ locals {
       "quote-compare-v2",
       "correlation-v2",
       "read-mail-inbox-v2",
-      "private_db_query"
+      "private_db_query",
+      "etl"
     ] :
     name => "${var.client_code}-${name}"
   }
@@ -834,6 +835,23 @@ resource "aws_cloudfront_distribution" "frontend" {
     }
   }
 
+  # Custom error responses for SPA routing
+  # When user refreshes on /dashboard or any route, CloudFront will return index.html
+  # so the React router can handle the routing client-side
+  custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
+    error_caching_min_ttl = 300
+  }
+
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+    error_caching_min_ttl = 300
+  }
+
   viewer_certificate {
     cloudfront_default_certificate = var.acm_certificate_arn == ""
     acm_certificate_arn            = var.acm_certificate_arn != "" ? var.acm_certificate_arn : null
@@ -866,6 +884,44 @@ resource "aws_s3_bucket_policy" "frontend" {
       }
     ]
   })
+}
+
+# -----------------------------------------------------------------------------
+# S3 Bucket for ETL Uploads
+# -----------------------------------------------------------------------------
+
+resource "aws_s3_bucket" "etl_uploads" {
+  bucket        = "${var.client_code}-${var.environment}-etl-uploads"
+  force_destroy = true
+
+  tags = merge(local.tags, { Name = "${local.name_prefix}-etl-uploads" })
+}
+
+resource "aws_s3_bucket_versioning" "etl_uploads" {
+  bucket = aws_s3_bucket.etl_uploads.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "etl_uploads" {
+  bucket = aws_s3_bucket.etl_uploads.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "etl_uploads" {
+  bucket = aws_s3_bucket.etl_uploads.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -970,6 +1026,26 @@ resource "aws_iam_role_policy" "lambda_db_extra" {
           "kms:Decrypt"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = [
+          "${aws_s3_bucket.etl_uploads.arn}/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.etl_uploads.arn
+        ]
       }
     ]
   })
@@ -1011,6 +1087,11 @@ locals {
       memory     = 1024
       enable_vpc = true
     }
+    "etl" = {
+      timeout    = 900
+      memory     = 2048
+      enable_vpc = true
+    }
   }
 }
 
@@ -1018,7 +1099,7 @@ resource "aws_lambda_function" "serverless" {
   for_each = local.lambda_function_names
 
   function_name = each.value
-  role          = each.key == "private_db_query" ? aws_iam_role.lambda_db.arn : aws_iam_role.lambda_general.arn
+  role          = (each.key == "private_db_query" || each.key == "etl") ? aws_iam_role.lambda_db.arn : aws_iam_role.lambda_general.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.lambda[each.key].repository_url}:${lookup(local.lambda_image_tags, each.key)}"
   timeout       = lookup(local.lambda_settings[each.key], "timeout", 900)
@@ -1041,6 +1122,13 @@ resource "aws_lambda_function" "serverless" {
         DB_PASSWORD = var.db_password
         DB_NAME = var.db_name
       } : {},
+      each.key == "etl" ? {
+        DB_HOST = aws_db_instance.postgres.address
+        DB_PORT = tostring(aws_db_instance.postgres.port)
+        DB_USER = var.db_username
+        DB_PASS = var.db_password
+        DB_NAME = var.db_name
+      } : {},
       each.key == "quote-compare-v2" ? { SERPER_API_KEY = var.serper_api_key } : {},
       each.key == "utility-function-v2" ? { SERPER_API_KEY = var.serper_api_key } : {}
     )
@@ -1052,6 +1140,33 @@ resource "aws_lambda_function" "serverless" {
   ]
 
   tags = merge(local.tags, { Name = each.value })
+}
+
+# -----------------------------------------------------------------------------
+# S3 Trigger for ETL Lambda
+# -----------------------------------------------------------------------------
+
+resource "aws_lambda_permission" "etl_s3_trigger" {
+  statement_id  = "AllowExecutionFromS3Bucket"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.serverless["etl"].function_name
+  principal     = "s3.amazonaws.com"
+  source_arn    = aws_s3_bucket.etl_uploads.arn
+
+  depends_on = [aws_lambda_function.serverless["etl"]]
+}
+
+resource "aws_s3_bucket_notification" "etl_trigger" {
+  bucket = aws_s3_bucket.etl_uploads.id
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.serverless["etl"].arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = ""
+    filter_suffix       = ".xlsx"
+  }
+
+  depends_on = [aws_lambda_permission.etl_s3_trigger]
 }
 
 

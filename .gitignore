@@ -5,8 +5,6 @@
 # Terraform local directory
 .terraform/
 
-# Scripts directory (untracked)
-scripts/
 
 # Local environment files
 *.tfvars.json

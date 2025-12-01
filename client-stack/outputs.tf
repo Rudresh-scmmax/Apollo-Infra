@@ -46,3 +46,8 @@ output "lambda_function_names" {
   value       = local.lambda_function_names
 }
 
+output "etl_uploads_bucket" {
+  description = "S3 bucket name for ETL Excel file uploads"
+  value       = aws_s3_bucket.etl_uploads.bucket
+}
+
